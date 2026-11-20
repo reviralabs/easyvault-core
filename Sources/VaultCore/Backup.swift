@@ -63,6 +63,9 @@ public struct BackupProgress: Sendable, Equatable {
 ///   this device and useless anywhere else.
 /// - `index.evi`, and every file under `items/` and `thumbs/`.
 ///
+/// - `backup.json`: when this backup last changed (`BackupInfo`), so a restore can pick the
+///   newest when two devices hold the same vault. Not part of the vault; never downloaded.
+///
 /// Each file is stored as parts named `<path>#<n>of<total>`. Item files never change once
 /// written, so an item counts as backed up when all its parts are present. Thumbnails can be
 /// rewritten (see `Vault.upgradeThumbnails`), so theirs are compared by checksum. Items go up
@@ -71,6 +74,7 @@ enum BackupEngine {
     static let partSize = 32 << 20
     static let headerPath = "vault.json"
     static let indexPath = "index.evi"
+    static let infoPath = "backup.json"
 
     // MARK: Back up
 
@@ -95,6 +99,7 @@ enum BackupEngine {
         let toUpload = try localPaths.filter { try !isBackedUp($0, remote: remoteFiles[$0], directory: directory) }
         var report = BackupProgress(done: 0, total: toUpload.count + 2)
         progress(report)
+        var changed = !toUpload.isEmpty
 
         for path in toUpload {
             let url = directory.appendingPathComponent(path)
@@ -112,15 +117,34 @@ enum BackupEngine {
                 let key = "\(path)#0of1"
                 try await store.put(key, data: data, sha256: sha256(data))
                 try await deleteLeftovers(of: file, keeping: [key], in: store)
+                changed = true
             }
             report.done += 1
             progress(report)
         }
 
         // Only now remove what was deleted locally, so the stored index never dangles.
-        let keep = Set(localPaths + [headerPath, indexPath])
+        let keep = Set(localPaths + [headerPath, indexPath, infoPath])
         let stale = remoteFiles.filter { !keep.contains($0.key) }.flatMap(\.value.keys)
-        if !stale.isEmpty { try await store.delete(stale) }
+        if !stale.isEmpty {
+            try await store.delete(stale)
+            changed = true
+        }
+
+        if changed || remoteFiles[infoPath]?.isComplete != true {
+            let info = try Storage.encoder.encode(BackupInfo(version: BackupInfo.currentVersion, updatedAt: Date()))
+            let key = "\(infoPath)#0of1"
+            try await store.put(key, data: info, sha256: sha256(info))
+            try await deleteLeftovers(of: remoteFiles[infoPath], keeping: [key], in: store)
+        }
+    }
+
+    /// When the backup in `store` last changed; nil for one made before `backup.json` existed.
+    static func updatedAt(in store: any BackupStore) async throws -> Date? {
+        guard let file = files(in: try await store.list())[infoPath], file.isComplete,
+              let data = try? await download(infoPath, file: file, from: store),
+              let info = try? Storage.decoder.decode(BackupInfo.self, from: data) else { return nil }
+        return info.updatedAt
     }
 
     // MARK: Check

@@ -154,8 +154,18 @@ it leaves the device. It holds:
   useless elsewhere),
 - `index.evi`, and every file under `items/` and `thumbs/`,
 
+- `backup.json`: `{"version": 1, "updatedAt": <ISO 8601>}`, when this backup last changed. Not
+  part of the vault folder,
+
 each split into parts of up to 32 MiB named `<path>#<n>of<total>`. Joining the parts gives back
 a vault folder in the layout above, which opens with the recovery key.
+
+Every device keeps its own backup under `devices/<device ID>/` in the same store, so two
+devices on one Apple Account never replace each other's (`DeviceBackupStore`). The device ID is
+random and stays on the device. Restoring tries the recovery key on each device's backup; if
+two hold the same vault, the newer `updatedAt` wins. Backups made before Easy Vault 1.3 sit at
+the top of the store without the prefix. They still restore, and a device deletes its own once
+its per-device backup is complete.
 
 ## Export
 

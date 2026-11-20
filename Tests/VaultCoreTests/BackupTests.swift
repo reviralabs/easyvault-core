@@ -99,7 +99,7 @@ final class BackupTests: XCTestCase {
         let store = CountingStore()
         try await manager.backUp(vault.id, to: store)
         let initial = await store.puts
-        XCTAssertEqual(initial.count, 3, "item, header, index")
+        XCTAssertEqual(initial.count, 4, "item, header, index, backup.json")
 
         await store.resetCount()
         try await manager.backUp(vault.id, to: store)
@@ -110,14 +110,14 @@ final class BackupTests: XCTestCase {
         await store.resetCount()
         try await manager.backUp(vault.id, to: store)
         let added = await store.puts
-        XCTAssertEqual(added.count, 2, "the new item and the index")
+        XCTAssertEqual(added.count, 3, "the new item, the index and backup.json")
         XCTAssertTrue(added.contains("index.evi#0of1"))
 
         try await vault.delete([first.id])
         await store.resetCount()
         try await manager.backUp(vault.id, to: store)
         let afterDelete = await store.puts
-        XCTAssertEqual(afterDelete, ["index.evi#0of1"])
+        XCTAssertEqual(afterDelete, ["index.evi#0of1", "backup.json#0of1"])
         let remaining = try await store.list().keys
         XCTAssertFalse(remaining.contains { $0.contains(first.id.uuidString) }, "deleted items are removed from the backup")
     }
@@ -157,7 +157,7 @@ final class BackupTests: XCTestCase {
         let replaced = try await second.backupVaultID(in: store)
         XCTAssertEqual(replaced, b.id)
         let keys = await store.list().keys
-        XCTAssertEqual(keys.count, 2, "only b's header and index remain")
+        XCTAssertEqual(keys.count, 3, "only b's header, index and backup.json remain")
     }
 
     func testBackupNeedsARecoveryKey() async throws {

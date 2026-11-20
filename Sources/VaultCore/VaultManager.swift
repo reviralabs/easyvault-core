@@ -153,10 +153,18 @@ public final class VaultManager: Sendable {
         }
     }
 
-    /// Checks a recovery key against the backup before downloading anything.
+    /// Checks a recovery key against the backups in `store` before downloading anything.
     public func verifyBackup(in store: any BackupStore, recoveryKey: RecoveryKey) async throws {
-        let header = try await BackupEngine.remoteHeader(in: store)
-        _ = try recoveryVaultKey(header, recoveryKey)
+        _ = try await findBackup(in: store, recoveryKey: recoveryKey)
+    }
+
+    /// Deletes the backup made before backups were per device, if it is of this vault. Called
+    /// once this device's own backup is complete. Another vault's is left alone: it may be the
+    /// only copy of a vault on a device that hasn't updated yet.
+    public func removeLegacyBackup(of vaultID: UUID, in store: any BackupStore) async throws {
+        let legacy = DeviceBackupStore.legacy(store)
+        guard try await backupVaultID(in: legacy) == vaultID else { return }
+        try await legacy.delete(Array(legacy.list().keys))
     }
 
     /// Checks that the backup in `store` has everything this vault holds, and, if a recovery
@@ -173,16 +181,17 @@ public final class VaultManager: Sendable {
         return status
     }
 
-    /// Downloads the backup, sets `newSecret` as this device's passcode and returns the vault
-    /// unlocked. Nothing appears in the vault folder until everything has arrived.
+    /// Downloads the backup that `recoveryKey` opens, sets `newSecret` as this device's passcode
+    /// and returns the vault unlocked. Nothing appears in the vault folder until everything has
+    /// arrived. `store` may hold several devices' backups (see `DeviceBackupStore`).
     public func restore(
         from store: any BackupStore, recoveryKey: RecoveryKey, newSecret: LockSecret,
         progress: @Sendable (BackupProgress) -> Void = { _ in }
     ) async throws -> Vault {
         try newSecret.validate()
-        let remoteHeader = try await BackupEngine.remoteHeader(in: store)
+        let (backup, remoteHeader, vaultKey) = try await findBackup(in: store, recoveryKey: recoveryKey)
+        let store: any BackupStore = backup
         let id = remoteHeader.id
-        let vaultKey = try recoveryVaultKey(remoteHeader, recoveryKey)
         guard !FileManager.default.fileExists(atPath: directory(id).path) else { throw BackupError.alreadyOnDevice }
         let stretched = try slotKeys.stretch(newSecret)
         if try openWithPasscode(stretched: stretched) != nil { throw VaultError.secretInUse }
@@ -228,6 +237,25 @@ public final class VaultManager: Sendable {
                 _ = try Vault.readThumbnail(Data(contentsOf: thumbURL), item: item)
             }
         }
+    }
+
+    /// The backup in `store` that `recoveryKey` opens. Each device keeps its own backup, so a
+    /// store can hold several; the recovery key picks the vault, and if two devices hold the same
+    /// vault (restored onto both), the one that changed last wins. Throws
+    /// `BackupError.noBackup` if the store is empty, `VaultError.wrongSecret` if no backup opens.
+    private func findBackup(in store: any BackupStore, recoveryKey: RecoveryKey) async throws -> (DeviceBackupStore, VaultHeader, SymmetricKey) {
+        var found: (backup: DeviceBackupStore, header: VaultHeader, key: SymmetricKey, updatedAt: Date)?
+        var anyBackup = false
+        for backup in try await DeviceBackupStore.all(in: store) {
+            guard let header = try? await BackupEngine.remoteHeader(in: backup) else { continue }
+            anyBackup = true
+            guard let key = try? recoveryVaultKey(header, recoveryKey) else { continue }
+            let updatedAt = try await BackupEngine.updatedAt(in: backup) ?? .distantPast
+            if found == nil || updatedAt > found!.updatedAt { found = (backup, header, key, updatedAt) }
+        }
+        guard anyBackup else { throw BackupError.noBackup }
+        guard let found else { throw VaultError.wrongSecret }
+        return (found.backup, found.header, found.key)
     }
 
     private func recoveryVaultKey(_ header: VaultHeader, _ recoveryKey: RecoveryKey) throws -> SymmetricKey {
