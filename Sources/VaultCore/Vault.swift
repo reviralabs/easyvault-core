@@ -10,13 +10,19 @@ public actor Vault {
     private var header: VaultHeader
     private var index: VaultIndex
 
-    init(id: UUID, directory: URL, header: VaultHeader, vaultKey: SymmetricKey, slotKeys: SlotKeys) throws {
+    /// `upgrade`: bring older files up to date (see `upgradeThumbnails`). Off for read-only use.
+    init(id: UUID, directory: URL, header: VaultHeader, vaultKey: SymmetricKey, slotKeys: SlotKeys, upgrade: Bool = true) throws {
         self.id = id
         self.directory = directory
         self.header = header
         self.vaultKey = vaultKey
         self.slotKeys = slotKeys
-        index = try Self.readIndex(at: directory, vaultID: id, key: vaultKey)
+        var index = try Self.readIndex(at: directory, vaultID: id, key: vaultKey)
+        if upgrade, index.thumbnailKeys != true, Self.upgradeThumbnails(index, at: directory) {
+            index.thumbnailKeys = true
+            try? Self.writeIndex(index, at: directory, vaultID: id, key: vaultKey)
+        }
+        self.index = index
     }
 
     // MARK: Reading
@@ -66,8 +72,7 @@ public actor Vault {
     public func thumbnail(for itemID: UUID) throws -> Data? {
         let item = try item(itemID)
         guard item.hasThumbnail else { return nil }
-        let file = try Data(contentsOf: thumbnailURL(itemID))
-        return try ItemCipher.decrypt(file, itemID: itemID, key: SymmetricKey(data: item.key))
+        return try Self.readThumbnail(Data(contentsOf: thumbnailURL(itemID)), item: item).data
     }
 
     /// Decrypts an item to a file, chunk by chunk. Use for videos and large files.
@@ -134,7 +139,7 @@ public actor Vault {
         do {
             try write(id, key, itemURL(id))
             if let thumbnail {
-                try Storage.write(ItemCipher.encrypt(thumbnail, itemID: id, key: key), to: thumbnailURL(id))
+                try Storage.write(ItemCipher.encrypt(thumbnail, itemID: id, key: ItemCipher.thumbnailKey(key, itemID: id)), to: thumbnailURL(id))
             }
             index.items.append(item)
             try saveIndex()
@@ -244,6 +249,9 @@ public actor Vault {
         index = VaultIndex()
     }
 
+    /// For tests only.
+    var keyForTesting: Data? { vaultKey?.data }
+
     // MARK: Private
 
     private func unlockedKey() throws -> SymmetricKey {
@@ -294,6 +302,37 @@ public actor Vault {
 
     // MARK: On-disk layout
 
+    /// Decrypts a thumbnail file. `legacy` is true for one written under the item key itself,
+    /// before thumbnails had their own key.
+    static func readThumbnail(_ file: Data, item: VaultItem) throws -> (data: Data, legacy: Bool) {
+        let itemKey = SymmetricKey(data: item.key)
+        do {
+            return (try ItemCipher.decrypt(file, itemID: item.id, key: ItemCipher.thumbnailKey(itemKey, itemID: item.id)), false)
+        } catch {
+            return (try ItemCipher.decrypt(file, itemID: item.id, key: itemKey), true)
+        }
+    }
+
+    /// Re-encrypts thumbnails still under their item key with their own key. Each file is
+    /// replaced atomically and readable either way, so an interrupted run is safe and resumes
+    /// next time. Returns whether every thumbnail now has its own key.
+    static func upgradeThumbnails(_ index: VaultIndex, at directory: URL) -> Bool {
+        var done = true
+        for item in index.items where item.hasThumbnail {
+            let url = directory.appendingPathComponent("thumbs/\(item.id.uuidString).evf")
+            guard let file = try? Data(contentsOf: url) else { continue } // nothing to upgrade
+            guard let (data, legacy) = try? readThumbnail(file, item: item) else { continue } // damaged either way
+            guard legacy else { continue }
+            let key = ItemCipher.thumbnailKey(SymmetricKey(data: item.key), itemID: item.id)
+            do {
+                try Storage.write(ItemCipher.encrypt(data, itemID: item.id, key: key), to: url)
+            } catch {
+                done = false
+            }
+        }
+        return done
+    }
+
     static func indexAAD(_ vaultID: UUID) -> Data {
         Data("ev/index".utf8) + vaultID.data
     }
@@ -340,7 +379,7 @@ extension Vault {
             binding: DeviceSecretBinding(NoDevice())
         )
         let vaultKey = try slot.unwrap(with: slotKeys.recoveryKEK(recoveryKey, vaultID: header.id), vaultID: header.id)
-        return try Vault(id: header.id, directory: folder, header: header, vaultKey: vaultKey, slotKeys: slotKeys)
+        return try Vault(id: header.id, directory: folder, header: header, vaultKey: vaultKey, slotKeys: slotKeys, upgrade: false)
     }
 }
 

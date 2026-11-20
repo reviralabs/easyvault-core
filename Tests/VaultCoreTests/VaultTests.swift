@@ -39,6 +39,10 @@ final class VaultTests: XCTestCase {
         let thumbnail = try await reopened.thumbnail(for: item.id)
         XCTAssertEqual(data, photo)
         XCTAssertEqual(thumbnail, Data("thumb".utf8))
+        XCTAssertThrowsError(try ItemCipher.decrypt(
+            Data(contentsOf: vault.directory.appendingPathComponent("thumbs/\(item.id.uuidString).evf")),
+            itemID: item.id, key: SymmetricKey(data: item.key)
+        ), "a thumbnail never shares its item's key (same item ID, so same nonces)")
         XCTAssertEqual(try manager().secretKind(of: vault.id), .password)
     }
 

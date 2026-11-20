@@ -98,6 +98,37 @@ final class FormatCompatibilityTests: XCTestCase {
         }
     }
 
+    /// Format v1 thumbnails shared their item's key and nonces. Unlocking re-encrypts them under
+    /// their own key, once; opening read-only (evdecrypt) changes nothing.
+    func testFormatV1ThumbnailsGetTheirOwnKey() async throws {
+        let manager = try openFixture("format-v1")
+        let mainID = UUID(uuidString: "9E2D3225-CF4F-4C3F-A460-245A94A610EB")!
+        let folder = root.appendingPathComponent(mainID.uuidString)
+        let thumbs = try FileManager.default.contentsOfDirectory(atPath: folder.appendingPathComponent("thumbs").path)
+        let thumbURL = folder.appendingPathComponent("thumbs").appendingPathComponent(try XCTUnwrap(thumbs.first))
+        let before = try Data(contentsOf: thumbURL)
+
+        _ = try Vault.open(folder: folder, recoveryKey: Self.recoveryKey)
+        XCTAssertEqual(try Data(contentsOf: thumbURL), before, "read-only open doesn't rewrite")
+
+        let vault = try manager.unlock(Self.password)
+        let items = await vault.items
+        let photo = try XCTUnwrap(items.first { $0.name == "beach.jpg" })
+        let after = try Data(contentsOf: thumbURL)
+        XCTAssertNotEqual(after, before)
+        let itemKey = SymmetricKey(data: photo.key)
+        XCTAssertThrowsError(try ItemCipher.decrypt(after, itemID: photo.id, key: itemKey))
+        XCTAssertEqual(try ItemCipher.decrypt(after, itemID: photo.id, key: ItemCipher.thumbnailKey(itemKey, itemID: photo.id)), Self.thumbnail)
+        let thumb = try await vault.thumbnail(for: photo.id)
+        XCTAssertEqual(thumb, Self.thumbnail)
+        let vaultKey = await vault.keyForTesting
+        let index = try Vault.readIndex(at: folder, vaultID: mainID, key: SymmetricKey(data: try XCTUnwrap(vaultKey)))
+        XCTAssertEqual(index.thumbnailKeys, true)
+
+        _ = try manager.unlock(Self.password)
+        XCTAssertEqual(try Data(contentsOf: thumbURL), after, "upgrades once")
+    }
+
     /// Writes the fixture for the current format. Skipped unless WRITE_FORMAT_FIXTURE is set.
     func testWriteFixture() async throws {
         guard let path = ProcessInfo.processInfo.environment["WRITE_FORMAT_FIXTURE"] else {

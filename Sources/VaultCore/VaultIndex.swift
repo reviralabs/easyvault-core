@@ -40,4 +40,8 @@ struct VaultIndex: Codable, Sendable {
     /// On the main vault: whether its decoy is a duress vault, so the app can show the setting
     /// without the decoy's passcode. Also only readable once this vault is unlocked.
     var decoyIsDuress: Bool?
+    /// Whether every thumbnail uses its own key (`ItemCipher.thumbnailKey`). Thumbnails written
+    /// before that shared the item key and nonces with the item; the vault re-encrypts them on
+    /// first unlock, then sets this. New indexes start true; nil in ones written before.
+    var thumbnailKeys: Bool? = true
 }

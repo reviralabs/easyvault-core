@@ -57,6 +57,12 @@ enum ItemCipher {
         }
     }
 
+    /// The key for an item's thumbnail. An item and its thumbnail share an item ID, so their
+    /// chunk nonces are the same; a separate key keeps nonces from ever repeating under one key.
+    static func thumbnailKey(_ itemKey: SymmetricKey, itemID: UUID) -> SymmetricKey {
+        HKDF<SHA256>.deriveKey(inputKeyMaterial: itemKey, salt: itemID.data, info: Data("ev/thumbnail".utf8), outputByteCount: 32)
+    }
+
     static func nonce(index: UInt64, final: Bool) -> AES.GCM.Nonce {
         var bytes = [UInt8](repeating: 0, count: 12)
         withUnsafeBytes(of: index.bigEndian) { indexBytes in

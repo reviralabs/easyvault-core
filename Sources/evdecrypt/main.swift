@@ -21,9 +21,17 @@ func fail(_ message: String) -> Never {
     exit(1)
 }
 
-/// File names come from the encrypted index; keep them to a plain last path component.
+/// File names come from the encrypted index; keep them to a plain, visible last path
+/// component of at most 200 characters (file systems allow 255 bytes).
 func safeName(_ name: String) -> String {
-    let cleaned = name.replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: ":", with: "_")
+    var cleaned = String(name.map { "/\\:\0".contains($0) || $0.isNewline ? "_" : $0 })
+    if cleaned.utf8.count > 200 {
+        let ext = (cleaned as NSString).pathExtension
+        let keep = ext.isEmpty || ext.utf8.count > 16 ? "" : "." + ext
+        var base = String((cleaned as NSString).deletingPathExtension.prefix(150))
+        while (base + keep).utf8.count > 200 { base.removeLast() }
+        cleaned = base + keep
+    }
     return cleaned.isEmpty || cleaned.hasPrefix(".") ? "item\(cleaned)" : cleaned
 }
 
@@ -47,6 +55,13 @@ do { vault = try Vault.open(folder: folder, recoveryKey: recoveryKey) } catch Va
     fail("this recovery key doesn't open the vault in \(folder.path)")
 } catch {
     fail("can't open \(folder.path): \(error)")
+}
+
+// Only you can read the output: decrypted photos shouldn't be visible to other accounts.
+do {
+    try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+} catch {
+    fail("can't create \(output.path): \(error)")
 }
 
 let items = await vault.items

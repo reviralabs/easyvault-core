@@ -64,8 +64,9 @@ public struct BackupProgress: Sendable, Equatable {
 /// - `index.evi`, and every file under `items/` and `thumbs/`.
 ///
 /// Each file is stored as parts named `<path>#<n>of<total>`. Item files never change once
-/// written, so a file counts as backed up when all its parts are present. Items go up before
-/// the index, so the index in the store never points at an item that isn't there.
+/// written, so an item counts as backed up when all its parts are present. Thumbnails can be
+/// rewritten (see `Vault.upgradeThumbnails`), so theirs are compared by checksum. Items go up
+/// before the index, so the index in the store never points at an item that isn't there.
 enum BackupEngine {
     static let partSize = 32 << 20
     static let headerPath = "vault.json"
@@ -91,7 +92,7 @@ enum BackupEngine {
 
         let remoteFiles = files(in: remote)
         let localPaths = try itemPaths(in: directory)
-        let toUpload = localPaths.filter { remoteFiles[$0]?.isComplete != true }
+        let toUpload = try localPaths.filter { try !isBackedUp($0, remote: remoteFiles[$0], directory: directory) }
         var report = BackupProgress(done: 0, total: toUpload.count + 2)
         progress(report)
 
@@ -133,7 +134,7 @@ enum BackupEngine {
         guard existing == vaultID else { throw BackupError.differentVault(existing) }
         let remoteFiles = files(in: remote)
         let localPaths = try itemPaths(in: directory)
-        let missing = Set(localPaths.filter { remoteFiles[$0]?.isComplete != true }
+        let missing = Set(try localPaths.filter { try !isBackedUp($0, remote: remoteFiles[$0], directory: directory) }
             .map { String($0.split(separator: "/")[1]) })
         let items = localPaths.filter { $0.hasPrefix("items/") }.count
         let index = try Data(contentsOf: directory.appendingPathComponent(indexPath))
@@ -198,6 +199,14 @@ enum BackupEngine {
             files[path] = file
         }
         return files
+    }
+
+    /// Items: all parts present. Thumbnails (small, single part, rewritable): same checksum.
+    private static func isBackedUp(_ path: String, remote: RemoteFile?, directory: URL) throws -> Bool {
+        guard let remote, remote.isComplete else { return false }
+        guard path.hasPrefix("thumbs/") else { return true }
+        let local = try Data(contentsOf: directory.appendingPathComponent(path))
+        return remote.total == 1 && remote.parts[0]?.sha == sha256(local)
     }
 
     /// Reads and uploads one part at a time, so a large video never sits in memory whole.

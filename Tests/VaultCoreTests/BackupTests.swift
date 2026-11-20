@@ -292,4 +292,28 @@ final class BackupTests: XCTestCase {
         let restoredItems = await restored.items
         XCTAssertEqual(restoredItems.map(\.name), ["a.jpg"])
     }
+
+    /// Thumbnails can be rewritten (re-encrypted under their own key), so a changed thumbnail
+    /// goes up again; item files never change and only need to be present.
+    func testRewrittenThumbnailIsBackedUpAgain() async throws {
+        let manager = try phone()
+        let vault = try manager.createVault(secret: .password("pw-rethumb-vault"), recoveryKey: RecoveryKey.generate())
+        let item = try await vault.add(Data("photo".utf8), name: "p.jpg", kind: .photo, contentType: "public.jpeg", thumbnail: Data("t".utf8))
+        let store = MemoryBackupStore()
+        try await manager.backUp(vault.id, to: store)
+        var status = try await manager.checkBackup(vault.id, in: store)
+        XCTAssertTrue(status.isComplete)
+
+        let thumbURL = vault.directory.appendingPathComponent("thumbs/\(item.id.uuidString).evf")
+        let rewritten = try ItemCipher.encrypt(Data("new thumbnail".utf8), itemID: item.id, key: ItemCipher.thumbnailKey(SymmetricKey(data: item.key), itemID: item.id))
+        try rewritten.write(to: thumbURL)
+        status = try await manager.checkBackup(vault.id, in: store)
+        XCTAssertEqual(status.missingCount, 1)
+
+        try await manager.backUp(vault.id, to: store)
+        status = try await manager.checkBackup(vault.id, in: store)
+        XCTAssertTrue(status.isComplete)
+        let stored = await store.objects["thumbs/\(item.id.uuidString).evf#0of1"]
+        XCTAssertEqual(stored, rewritten)
+    }
 }

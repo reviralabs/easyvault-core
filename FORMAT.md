@@ -32,7 +32,8 @@ recovery key ──────────────────────�
 Face ID key (random, in the Keychain behind biometry) ─────────────────────────────────────┘        │
                                                                                                     ├─► index.evi
                                                                        item key (random, per item) ◄┘ (stored in the index)
-                                                                            └─► items/<id>.evf, thumbs/<id>.evf
+                                                                            ├─► items/<id>.evf
+                                                                            └─HKDF "ev/thumbnail"─► thumbs/<id>.evf
 ```
 
 ### Passcode
@@ -95,10 +96,11 @@ is JSON:
                "byteCount": 123, "createdAt": "…", "addedAt": "…", "albumID": "…",
                "hasThumbnail": true, "key": "<32-byte item key>" } ],
   "albums": [ { "id": "…", "name": "Holiday", "createdAt": "…" } ],
-  "isDuress": false, "decoyIsDuress": false }
+  "isDuress": false, "decoyIsDuress": false, "thumbnailKeys": true }
 ```
 
-`kind` is `photo`, `video` or `file`. Whether a vault is a Vanish-mode (duress) vault is only
+`kind` is `photo`, `video` or `file`. `thumbnailKeys` says every thumbnail uses its own key
+(below). Whether a vault is a Vanish-mode (duress) vault is only
 in here, so it can't be seen without opening that vault.
 
 ## Item files (.evf)
@@ -115,12 +117,21 @@ offset  size  field
 24      …     chunks: AES-GCM ciphertext ‖ 16-byte tag, chunk size + 16 bytes each, the last shorter
 ```
 
-- Key: the item's key from the index (an item and its thumbnail share it).
+- Key: for an item, its key from the index. For a thumbnail, its own key,
+  `HKDF(item key, salt = item ID bytes, info = "ev/thumbnail")`: an item and its thumbnail share
+  an item ID and therefore nonces, so they must not share a key.
 - Nonce for chunk `i`: 3 zero bytes ‖ `i` as 8-byte big-endian ‖ 1 byte, 1 for the last
   chunk and 0 otherwise (the STREAM construction).
 - Associated data: the 24-byte header.
 
-Every item has its own key, so nonces never repeat under a key. Reordering, dropping or
+Every item and every thumbnail has its own key, so nonces never repeat under a key.
+
+**Earlier thumbnails.** Until November 2026, thumbnails were encrypted under the item key
+itself, so a thumbnail's chunk 0 reused its item's nonce under the same key. On the first unlock
+with the fixed code, each vault re-encrypts those thumbnails under their own key, replacing
+each file atomically, then sets `thumbnailKeys`. Readers try the thumbnail key first and fall
+back to the item key. Backups compare thumbnails by checksum, so the re-encrypted ones replace
+the old ones in iCloud on the next backup. Reordering, dropping or
 appending chunks, or moving a file to another item, fails authentication.
 
 ## Inbox

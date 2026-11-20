@@ -49,6 +49,22 @@ in a private repository. All the cryptography and the file format are here; the 
 supplies the Secure Enclave key, Keychain storage and the iCloud transport, through the
 `DeviceBinding`, `DeviceSecretProvider` and `BackupStore` protocols.
 
+## Security notes
+
+What this protects: the files on the device and in iCloud. Without your pattern or password
+and that device's Secure Enclave, or your recovery key, they're unreadable.
+
+What it doesn't:
+
+- **Someone with your unlocked vault.** Once it's open, it's open.
+- **Guessing on your own phone.** Argon2id makes each guess slow (about half a second), and the
+  app adds waiting time after 5 wrong tries, but a short pattern can still be guessed by someone
+  with your phone and a lot of time. Use a longer pattern or a password.
+- **Sizes and counts.** File sizes and the number of items are visible to anyone with the files;
+  names, dates, albums and content are not.
+- **Memory.** Keys are dropped when the vault locks, but Swift doesn't guarantee they're wiped
+  from memory immediately.
+
 ## Reporting a security issue
 
 Email support@easyvault.app with "Security" in the subject. Please don't open a public issue
