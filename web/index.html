@@ -36,48 +36,49 @@
 </head>
 <body>
 <main>
-  <h1>Open your Easy Vault, without the app</h1>
-  <p class="lead">Your photos are never trapped in our app. With an exported vault and your recovery key, this page opens everything on your computer.</p>
-  <div class="note">
+  <h1 data-t="h1">Open your Easy Vault, without the app</h1>
+  <p class="lead" data-t="lead">Your photos are never trapped in our app. With an exported vault and your recovery key, this page opens everything on your computer.</p>
+  <div class="note" data-t="noteHtml">
     <strong>Nothing leaves your computer.</strong> Your vault is unlocked right here, in this browser tab. Nothing is uploaded, and this page isn't allowed to send anything. To be extra sure, turn off Wi-Fi before you start.
   </div>
 
   <section id="start">
-    <h2>1. Export your vault from the app</h2>
-    <p>In Easy Vault, go to <strong>Settings → Export encrypted vault</strong> and save the file to your computer. It's still locked: nobody can open it without your recovery key.</p>
+    <h2 data-t="step1">1. Export your vault from the app</h2>
+    <p data-t="step1Html">In Easy Vault, go to <strong>Settings → Export encrypted vault</strong> and save the file to your computer. It's still locked: nobody can open it without your recovery key.</p>
 
-    <h2>2. Unzip it</h2>
-    <p>Double-click the file on a Mac. On Windows, right-click it and choose <strong>Extract All</strong>. You'll get a folder.</p>
+    <h2 data-t="step2">2. Unzip it</h2>
+    <p data-t="step2Html">Double-click the file on a Mac. On Windows, right-click it and choose <strong>Extract All</strong>. You'll get a folder.</p>
 
-    <h2>3. Open it here</h2>
-    <label for="folder">Your vault folder</label>
+    <h2 data-t="step3">3. Open it here</h2>
+    <label for="folder" data-t="folderLabel">Your vault folder</label>
     <input id="folder" type="file" webkitdirectory multiple>
-    <p class="hint" id="folder-hint">Choose the folder you just unzipped. This needs a computer: phones can't choose folders.</p>
+    <p class="hint" id="folder-hint" data-t="folderHint">Choose the folder you just unzipped. This needs a computer: phones can't choose folders.</p>
 
-    <label for="key">Your recovery key</label>
+    <label for="key" data-t="keyLabel">Your recovery key</label>
     <input id="key" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-X">
-    <p class="hint">The 25-character key Easy Vault showed you when you set up your vault or backup.</p>
+    <p class="hint" data-t="keyHint">The 25-character key Easy Vault showed you when you set up your vault or backup.</p>
 
-    <div class="actions"><button id="open" disabled>Open my vault</button></div>
+    <div class="actions"><button id="open" disabled data-t="open">Open my vault</button></div>
     <p class="error" id="error" role="alert" hidden></p>
   </section>
 
   <section id="vault" hidden>
     <h2 id="summary"></h2>
-    <p>Click anything to save it, or save everything at once. Albums become folders.</p>
+    <p data-t="clickToSave">Click anything to save it, or save everything at once. Albums become folders.</p>
     <div class="actions">
-      <button id="save-all">Save everything</button>
-      <button id="close" class="secondary">Close and forget the key</button>
+      <button id="save-all" data-t="saveAll">Save everything</button>
+      <button id="close" class="secondary" data-t="close">Close and forget the key</button>
     </div>
     <p class="status" id="status" role="status"></p>
     <div id="albums"></div>
   </section>
 
-  <footer>
+  <footer data-t="footerHtml">
     This page is part of the <a href="https://github.com/reviralabs/easyvault-core">open-source Easy Vault core</a>. You can save it and open it from your own computer, even if easyvault.app ever goes away.
   </footer>
 </main>
 <script src="open-vault.js"></script>
+<script src="strings.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -23,7 +23,7 @@ In Easy Vault, **Settings → Export encrypted vault** saves the whole vault as 
 encrypted. Unzip it, then either:
 
 - **In a browser:** open [easyvault.app/open](https://easyvault.app/open), or `web/index.html`
-  from this repository (it works offline, straight from disk). Choose the folder and type the
+  from this repository (it works offline, straight from disk, in English, German, Spanish, Portuguese, Dutch and Italian). Choose the folder and type the
   recovery key. It uses only the browser's built-in Web Crypto, and the hosted page is served
   with a Content-Security-Policy that blocks it from sending anything.
 - **On the command line:** `evdecrypt`, below.

@@ -5,16 +5,25 @@
   const $ = (id) => document.getElementById(id);
   let files = null, vault = null, urls = [];
 
-  const messages = {
-    invalidKey: 'That isn’t a recovery key. It has 25 letters and numbers, like XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-X. Check for a typo.',
-    wrongKey: 'This recovery key doesn’t open this vault. If you made a new recovery key in the app, use the newest one.',
-    noVault: 'This folder isn’t an Easy Vault export. Choose the folder you got by unzipping the exported file.',
-    noRecoverySlot: 'This vault has no recovery key. In the app, create one in Settings, then export again.',
-    newer: 'This vault was made by a newer Easy Vault. Get the newest version of this page from github.com/reviralabs/easyvault-core.',
+  // The page's language: ?lang= from easyvault.app links, else the browser's, else English.
+  const all = globalThis.EasyVaultStrings;
+  const pick = (code) => {
+    code = (code || '').toLowerCase();
+    return all[code] ? code : code.startsWith('pt') ? 'pt-br' : all[code.split('-')[0]] ? code.split('-')[0] : null;
   };
+  const lang = pick(new URLSearchParams(location.search).get('lang')) || pick(navigator.language) || 'en';
+  const S = all[lang];
+  const t = (key, values = {}) => S[key].replace(/\{(\w+)\}/g, (_, k) => values[k]);
+  const plural = (key, n) => S[key][n === 1 ? 0 : 1].replace('{n}', n);
+  document.documentElement.lang = lang;
+  document.title = S.title;
+  for (const el of document.querySelectorAll('[data-t]')) {
+    const key = el.dataset.t;
+    if (key.endsWith('Html')) el.innerHTML = S[key]; else el.textContent = S[key];
+  }
 
   function showError(error) {
-    $('error').textContent = messages[error.code] || `Something went wrong: ${error.message}`;
+    $('error').textContent = S[error.code] && error.code !== 'generic' ? S[error.code] : t('generic', { m: error.message });
     $('error').hidden = false;
   }
 
@@ -36,7 +45,7 @@
   $('open').addEventListener('click', async () => {
     $('error').hidden = true;
     $('open').disabled = true;
-    $('open').textContent = 'Opening…';
+    $('open').textContent = S.opening;
     try {
       vault = await openVault(files, $('key').value);
       $('key').value = '';
@@ -44,7 +53,7 @@
     } catch (error) {
       showError(error);
     } finally {
-      $('open').textContent = 'Open my vault';
+      $('open').textContent = S.open;
       update();
     }
   });
@@ -54,10 +63,10 @@
     $('vault').hidden = false;
     const n = vault.items.length;
     const a = vault.albums.length;
-    $('summary').textContent = `Your vault is open: ${n} ${n === 1 ? 'item' : 'items'}` + (a ? `, ${a} ${a === 1 ? 'album' : 'albums'}` : '');
+    $('summary').textContent = t('summary', { items: plural('items', n), albums: a ? plural('albums', a) : '' });
     const groups = new Map();
     for (const item of vault.items) {
-      const name = item.album || 'Not in an album';
+      const name = item.album || S.notInAlbum;
       if (!groups.has(name)) groups.set(name, []);
       groups.get(name).push(item);
     }
@@ -78,13 +87,13 @@
     button.className = 'tile';
     const thumb = document.createElement('span');
     thumb.className = 'thumb';
-    thumb.textContent = item.kind === 'video' ? 'Video' : item.kind === 'photo' ? 'Photo' : 'File';
+    thumb.textContent = S[item.kind === 'video' || item.kind === 'photo' ? item.kind : 'file'];
     const name = document.createElement('span');
     name.className = 'name';
     name.textContent = item.name;
     button.append(thumb, name);
     button.title = item.name;
-    button.addEventListener('click', () => download(item).catch((e) => status(`Couldn’t save ${item.name}: ${e.message}`)));
+    button.addEventListener('click', () => download(item).catch((e) => status(t('cantSaveItem', { name: item.name, m: e.message }))));
     vault.thumbnail(item).then((data) => {
       if (!data) return;
       const url = URL.createObjectURL(new Blob([data], { type: 'image/jpeg' }));
@@ -118,7 +127,7 @@
       if (window.showDirectoryPicker) {
         const root = await window.showDirectoryPicker({ mode: 'readwrite' });
         for (const item of vault.items) {
-          status(`Saving ${done + 1} of ${total}…`);
+          status(t('saving', { i: done + 1, n: total }));
           try {
             const folder = item.album ? await root.getDirectoryHandle(safeName(item.album), { create: true }) : root;
             const file = await folder.getFileHandle(await freeName(folder, safeName(item.name)), { create: true });
@@ -129,15 +138,15 @@
         }
       } else {
         for (const item of vault.items) {
-          status(`Saving ${done + 1} of ${total}… Your browser may ask to allow several downloads.`);
+          status(t('savingDownloads', { i: done + 1, n: total }));
           try { await download(item); } catch { failed++; }
           done++;
           await new Promise((r) => setTimeout(r, 400));
         }
       }
-      status(`Saved ${done - failed} of ${total}.` + (failed ? ` ${failed} couldn’t be read.` : ''));
+      status(t('saved', { d: done - failed, n: total }) + (failed ? t('unreadable', { f: failed }) : ''));
     } catch (e) {
-      if (e.name !== 'AbortError') status(`Couldn’t save: ${e.message}`);
+      if (e.name !== 'AbortError') status(t('cantSave', { m: e.message }));
     } finally {
       $('save-all').disabled = false;
     }
