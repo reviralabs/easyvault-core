@@ -1,0 +1,12 @@
+{
+  "createdAt" : "2026-10-31T19:24:36Z",
+  "id" : "869A7D7C-35EC-4DF7-9D19-22A1FECFD62B",
+  "slots" : [
+    {
+      "kind" : "passcode",
+      "sealed" : "WW7cqJmKT3VTqDo8zYM1\/OkZScjb+6VOUnC6sj\/U99DWIFxM6qewyMVnpeifJh+o0vwfOPMVQYeMaxd\/",
+      "secretKind" : "password"
+    }
+  ],
+  "version" : 1
+}

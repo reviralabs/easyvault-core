@@ -1,0 +1,9 @@
+{
+  "argon2" : {
+    "memLimitBytes" : 8388608,
+    "opsLimit" : 1
+  },
+  "binding" : "keychainSecret",
+  "salt" : "Eln\/uGEOP2i22Pjo3Xg\/9w==",
+  "version" : 1
+}

@@ -1,0 +1,16 @@
+{
+  "createdAt" : "2026-10-31T19:24:36Z",
+  "id" : "9E2D3225-CF4F-4C3F-A460-245A94A610EB",
+  "slots" : [
+    {
+      "kind" : "passcode",
+      "sealed" : "D3u\/4FsJvR3qknW\/Zi\/3YrCn4VcyTRAPq0jPnfOBU\/TILU5us5ij7+cHMJJYKNtlevvVHUFzCbvfup4M",
+      "secretKind" : "password"
+    },
+    {
+      "kind" : "recovery",
+      "sealed" : "AkkDwnvoXf8XXEOpnUhWh2E6QHXdRQHuYtV2Hl50C6t7vK\/tIgjWEQjEWpc1WCjNcaKvjTeBy3ZoupH2"
+    }
+  ],
+  "version" : 1
+}

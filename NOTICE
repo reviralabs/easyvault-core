@@ -1,0 +1,8 @@
+Easy Vault core
+Copyright 2026 Revira Labs
+
+This product includes Sources/VaultCore/Resources/common-passwords.txt, the passwords of
+8 or more characters (lowercased) from the UK National Cyber Security Centre's list of the
+100,000 most used passwords in breaches, as published in SecLists
+(https://github.com/danielmiessler/SecLists, Passwords/Common-Credentials/
+100k-most-used-passwords-NCSC.txt), MIT License, Copyright (c) 2018 Daniel Miessler.
