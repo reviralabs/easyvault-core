@@ -12,8 +12,21 @@ existing.
 - A **recovery key** (120 random bits) that isn't tied to any device: it opens your backup on a
   new phone, and opens a vault folder with `evdecrypt`, without the app.
 - No account and no servers. Backups go to your own iCloud, already encrypted.
+- **No lock-in.** Your photos are never trapped in the app. Even without Easy Vault, your
+  recovery key opens them.
 
 The full on-disk format is in [FORMAT.md](FORMAT.md).
+
+## Open a vault without the app
+
+In Easy Vault, **Settings → Export encrypted vault** saves the whole vault as one .zip, still
+encrypted. Unzip it, then either:
+
+- **In a browser:** open [easyvault.app/open](https://easyvault.app/open), or `web/index.html`
+  from this repository (it works offline, straight from disk). Choose the folder and type the
+  recovery key. It uses only the browser's built-in Web Crypto, and the hosted page is served
+  with a Content-Security-Policy that blocks it from sending anything.
+- **On the command line:** `evdecrypt`, below.
 
 ## evdecrypt
 
@@ -37,6 +50,7 @@ Swift 6.0 or later on macOS, or on Linux with `libsodium-dev` installed.
 
 ```sh
 swift test
+node web/test.mjs   # the browser opener, against the same sample vault
 ```
 
 Every released format has a vault folder in `Tests/VaultCoreTests/Fixtures` that the tests

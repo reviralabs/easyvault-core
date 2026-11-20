@@ -4,12 +4,13 @@ jobs:
   macos:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: swift test
+      - run: node web/test.mjs
   linux:
     runs-on: ubuntu-24.04
     container: swift:6.0
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: apt-get update && apt-get install -y libsodium-dev
       - run: swift test

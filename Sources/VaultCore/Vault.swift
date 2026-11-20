@@ -81,6 +81,41 @@ public actor Vault {
         try ItemCipher.decryptFile(at: itemURL(itemID), to: destination, itemID: itemID, key: SymmetricKey(data: item.key))
     }
 
+    /// Copies the whole vault, still encrypted, into a new folder at `destination`, for the
+    /// user to keep outside the app. Only the recovery keyslot goes with it (the others are bound
+    /// to this device), so the copy opens with the recovery key alone: with `Vault.open(folder:
+    /// recoveryKey:)`, `evdecrypt` or the web opener, without this app.
+    public func exportEncrypted(to destination: URL) throws {
+        _ = try unlockedKey()
+        var exported = header
+        exported.slots = header.slots.filter { $0.kind == .recovery }
+        guard !exported.slots.isEmpty else { throw BackupError.noRecoveryKey }
+
+        let fm = FileManager.default
+        try fm.createDirectory(at: destination, withIntermediateDirectories: false)
+        do {
+            for folder in ["items", "thumbs"] {
+                try fm.createDirectory(at: destination.appendingPathComponent(folder), withIntermediateDirectories: false)
+            }
+            // Only what the index lists, so the copy is exactly what the vault shows.
+            for item in index.items {
+                try fm.copyItem(at: itemURL(item.id), to: destination.appendingPathComponent("items/\(item.id.uuidString).evf"))
+                if item.hasThumbnail, fm.fileExists(atPath: thumbnailURL(item.id).path) {
+                    try fm.copyItem(at: thumbnailURL(item.id), to: destination.appendingPathComponent("thumbs/\(item.id.uuidString).evf"))
+                }
+            }
+            // Without the second-vault settings: the copy says nothing about another vault.
+            var copy = index
+            copy.isDuress = nil
+            copy.decoyIsDuress = nil
+            try Self.writeIndex(copy, at: destination, vaultID: id, key: unlockedKey())
+            try Self.writeHeader(exported, at: destination)
+        } catch {
+            try? fm.removeItem(at: destination)
+            throw error
+        }
+    }
+
     // MARK: Adding
 
     @discardableResult

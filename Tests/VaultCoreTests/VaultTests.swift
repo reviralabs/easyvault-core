@@ -297,6 +297,51 @@ final class VaultTests: XCTestCase {
         }
     }
 
+    /// An exported copy opens with the recovery key alone and carries nothing device-bound
+    /// and nothing about a second vault.
+    func testExportEncryptedOpensWithRecoveryKeyAlone() async throws {
+        let key = RecoveryKey.generate()
+        let vault = try manager().createVault(secret: .password("pw-export-vault"), recoveryKey: key)
+        _ = try await vault.enableBiometricUnlock()
+        try await vault.setDecoyIsDuress(true)
+        let album = try await vault.createAlbum(named: "Trips")
+        let photo = try await vault.add(Data("photo".utf8), name: "a.jpg", kind: .photo, contentType: "public.jpeg", albumID: album.id, thumbnail: Data("thumb".utf8))
+        let document = try await vault.add(Data(), name: "empty.pdf", kind: .file, contentType: "com.adobe.pdf")
+
+        let out = root.appendingPathComponent("export")
+        try await vault.exportEncrypted(to: out)
+
+        let header = try Vault.readHeader(at: out)
+        XCTAssertEqual(header.slots.map(\.kind), [.recovery])
+        let copy = try Vault.open(folder: out, recoveryKey: key)
+        XCTAssertEqual(copy.id, vault.id)
+        let items = await copy.items
+        XCTAssertEqual(Set(items.map(\.name)), ["a.jpg", "empty.pdf"])
+        let photoData = try await copy.data(for: photo.id)
+        let thumb = try await copy.thumbnail(for: photo.id)
+        let documentData = try await copy.data(for: document.id)
+        XCTAssertEqual(photoData, Data("photo".utf8))
+        XCTAssertEqual(thumb, Data("thumb".utf8))
+        XCTAssertEqual(documentData, Data())
+        let albums = await copy.albums
+        XCTAssertEqual(albums.map(\.name), ["Trips"])
+        let decoyIsDuress = await copy.decoyIsDuress
+        XCTAssertFalse(decoyIsDuress)
+        XCTAssertThrowsError(try Vault.open(folder: out, recoveryKey: .generate()))
+
+        // Never over an existing folder, and never without a recovery key.
+        do { try await vault.exportEncrypted(to: out); XCTFail("exported over an existing folder") } catch {}
+        try await vault.removeRecoveryKey()
+        let second = root.appendingPathComponent("export-2")
+        do {
+            try await vault.exportEncrypted(to: second)
+            XCTFail("exported without a recovery key")
+        } catch {
+            XCTAssertEqual(error as? BackupError, .noRecoveryKey)
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: second.path))
+    }
+
     func testRejectsInvalidSecretsBeforeDoingWork() {
         XCTAssertThrowsError(try manager().createVault(secret: .password("short"))) {
             guard case .invalidSecret = $0 as? VaultError else { return XCTFail("\($0)") }

@@ -157,6 +157,13 @@ it leaves the device. It holds:
 each split into parts of up to 32 MiB named `<path>#<n>of<total>`. Joining the parts gives back
 a vault folder in the layout above, which opens with the recovery key.
 
+## Export
+
+**Settings → Export encrypted vault** writes one vault folder in the layout above, zipped:
+`vault.json` with only the recovery keyslot, `index.evi` (without `isDuress` and
+`decoyIsDuress`, so it says nothing about a second vault), and the files under `items/` and
+`thumbs/` that the index lists, plus a `README.txt`. It opens with the recovery key alone.
+
 ## Versions
 
 Every JSON file has `version`, and `.evf` has a version byte. A reader rejects versions newer
