@@ -96,12 +96,15 @@ is JSON:
                "byteCount": 123, "createdAt": "…", "addedAt": "…", "albumID": "…",
                "hasThumbnail": true, "key": "<32-byte item key>" } ],
   "albums": [ { "id": "…", "name": "Holiday", "createdAt": "…" } ],
-  "isDuress": false, "decoyIsDuress": false, "thumbnailKeys": true }
+  "isDuress": false, "decoyIsDuress": false, "thumbnailKeys": true,
+  "inboxKey": "<32-byte X25519 private key>" }
 ```
 
 `kind` is `photo`, `video` or `file`. `thumbnailKeys` says every thumbnail uses its own key
 (below). Whether a vault is a Vanish-mode (duress) vault is only
-in here, so it can't be seen without opening that vault.
+in here, so it can't be seen without opening that vault. `inboxKey`, on the main vault only, is
+the private key of the inbox (below). Optional fields that are missing mean `false` / none, and
+readers ignore fields they don't know.
 
 ## Item files (.evf)
 
@@ -130,7 +133,8 @@ Every item and every thumbnail has its own key, so nonces never repeat under a k
 itself, so a thumbnail's chunk 0 reused its item's nonce under the same key. On the first unlock
 with the fixed code, each vault re-encrypts those thumbnails under their own key, replacing
 each file atomically, then sets `thumbnailKeys`. Readers try the thumbnail key first and fall
-back to the item key. Backups compare thumbnails by checksum, so the re-encrypted ones replace
+back to the item key only while `thumbnailKeys` isn't set; once it is, a thumbnail under the
+item key is refused. Backups compare thumbnails by checksum, so the re-encrypted ones replace
 the old ones in iCloud on the next backup. Reordering, dropping or
 appending chunks, or moving a file to another item, fails authentication.
 
@@ -143,7 +147,11 @@ inbox's X25519 public key. Each entry is two files named by a fresh entry ID:
 - `<id>.evm`: the 32-byte ephemeral X25519 public key ‖ AES-GCM combined JSON metadata.
 
 `entry key = HKDF(X25519(ephemeral, inbox key), salt = entry ID bytes, info = "EasyVault inbox v1")`.
-The app opens entries after the main vault is unlocked and moves them into it.
+
+The extension only has the public key. The private key is `inboxKey` in the main vault's
+encrypted index, so entries can only be opened once the main vault is unlocked; the app then
+moves them into it. (Before Easy Vault 1.3 the private key was kept in the app's Keychain, outside
+the vault; the first unlock with 1.3 moves it into the index and deletes the Keychain copy.)
 
 ## iCloud backup
 
@@ -171,8 +179,10 @@ its per-device backup is complete.
 
 **Settings → Export encrypted vault** writes one vault folder in the layout above, zipped:
 `vault.json` with only the recovery keyslot, `index.evi` (without `isDuress` and
-`decoyIsDuress`, so it says nothing about a second vault), and the files under `items/` and
-`thumbs/` that the index lists, plus a `README.txt`. It opens with the recovery key alone.
+`decoyIsDuress`, so it says nothing about a second vault, and without `inboxKey`), and the files
+under `items/` and `thumbs/` that the index lists, plus a `README.txt`. It opens with the recovery
+key alone. An item whose file is missing on the device is left out rather than stopping the
+export; it stays listed and shows as missing when opened.
 
 ## Versions
 

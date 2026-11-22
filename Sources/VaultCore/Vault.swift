@@ -63,6 +63,26 @@ public actor Vault {
         header.slots.first { $0.kind == .passcode }?.secretKind
     }
 
+    /// The inbox's private key (its raw 32 bytes, for `Curve25519.KeyAgreement.PrivateKey`), kept
+    /// in this vault's encrypted index so files saved while the app is locked open only with this
+    /// vault. Made the first time it's asked for. `migrating`: a key the app kept elsewhere before
+    /// (the Keychain); it's adopted, so pending entries still open.
+    public func inboxKey(migrating legacy: Data? = nil) throws -> Data {
+        _ = try unlockedKey()
+        if let stored = index.inboxKey, (try? Curve25519.KeyAgreement.PrivateKey(rawRepresentation: stored)) != nil {
+            return stored
+        }
+        let key = legacy.flatMap { try? Curve25519.KeyAgreement.PrivateKey(rawRepresentation: $0) } ?? Inbox.makeKey()
+        index.inboxKey = key.rawRepresentation
+        do {
+            try saveIndex()
+        } catch {
+            index.inboxKey = nil
+            throw error
+        }
+        return key.rawRepresentation
+    }
+
     public func data(for itemID: UUID) throws -> Data {
         let item = try item(itemID)
         let file = try Data(contentsOf: itemURL(itemID))
@@ -72,7 +92,7 @@ public actor Vault {
     public func thumbnail(for itemID: UUID) throws -> Data? {
         let item = try item(itemID)
         guard item.hasThumbnail else { return nil }
-        return try Self.readThumbnail(Data(contentsOf: thumbnailURL(itemID)), item: item).data
+        return try Self.readThumbnail(Data(contentsOf: thumbnailURL(itemID)), item: item, legacyAllowed: index.thumbnailKeys != true).data
     }
 
     /// Decrypts an item to a file, chunk by chunk. Use for videos and large files.
@@ -85,13 +105,19 @@ public actor Vault {
     /// user to keep outside the app. Only the recovery keyslot goes with it (the others are bound
     /// to this device), so the copy opens with the recovery key alone: with `Vault.open(folder:
     /// recoveryKey:)`, `evdecrypt` or the web opener, without this app.
-    public func exportEncrypted(to destination: URL) throws {
+    ///
+    /// An item whose file is missing (a damaged vault) is left out rather than stopping the
+    /// export, so everything else still gets out; it stays listed and shows as missing when the
+    /// copy is opened. Returns how many were missing.
+    @discardableResult
+    public func exportEncrypted(to destination: URL) throws -> Int {
         _ = try unlockedKey()
         var exported = header
         exported.slots = header.slots.filter { $0.kind == .recovery }
         guard !exported.slots.isEmpty else { throw BackupError.noRecoveryKey }
 
         let fm = FileManager.default
+        var missing = 0
         try fm.createDirectory(at: destination, withIntermediateDirectories: false)
         do {
             for folder in ["items", "thumbs"] {
@@ -99,21 +125,28 @@ public actor Vault {
             }
             // Only what the index lists, so the copy is exactly what the vault shows.
             for item in index.items {
+                guard fm.fileExists(atPath: itemURL(item.id).path) else {
+                    missing += 1
+                    continue
+                }
                 try fm.copyItem(at: itemURL(item.id), to: destination.appendingPathComponent("items/\(item.id.uuidString).evf"))
                 if item.hasThumbnail, fm.fileExists(atPath: thumbnailURL(item.id).path) {
                     try fm.copyItem(at: thumbnailURL(item.id), to: destination.appendingPathComponent("thumbs/\(item.id.uuidString).evf"))
                 }
             }
-            // Without the second-vault settings: the copy says nothing about another vault.
+            // Without the second-vault settings (the copy says nothing about another vault) and
+            // without the inbox key, which only matters on this device.
             var copy = index
             copy.isDuress = nil
             copy.decoyIsDuress = nil
+            copy.inboxKey = nil
             try Self.writeIndex(copy, at: destination, vaultID: id, key: unlockedKey())
             try Self.writeHeader(exported, at: destination)
         } catch {
             try? fm.removeItem(at: destination)
             throw error
         }
+        return missing
     }
 
     // MARK: Adding
@@ -338,12 +371,14 @@ public actor Vault {
     // MARK: On-disk layout
 
     /// Decrypts a thumbnail file. `legacy` is true for one written under the item key itself,
-    /// before thumbnails had their own key.
-    static func readThumbnail(_ file: Data, item: VaultItem) throws -> (data: Data, legacy: Bool) {
+    /// before thumbnails had their own key. Those are only accepted while `legacyAllowed`: once
+    /// the index says every thumbnail has its own key (`thumbnailKeys`), nothing else opens.
+    static func readThumbnail(_ file: Data, item: VaultItem, legacyAllowed: Bool) throws -> (data: Data, legacy: Bool) {
         let itemKey = SymmetricKey(data: item.key)
         do {
             return (try ItemCipher.decrypt(file, itemID: item.id, key: ItemCipher.thumbnailKey(itemKey, itemID: item.id)), false)
         } catch {
+            guard legacyAllowed else { throw error }
             return (try ItemCipher.decrypt(file, itemID: item.id, key: itemKey), true)
         }
     }
@@ -356,7 +391,7 @@ public actor Vault {
         for item in index.items where item.hasThumbnail {
             let url = directory.appendingPathComponent("thumbs/\(item.id.uuidString).evf")
             guard let file = try? Data(contentsOf: url) else { continue } // nothing to upgrade
-            guard let (data, legacy) = try? readThumbnail(file, item: item) else { continue } // damaged either way
+            guard let (data, legacy) = try? readThumbnail(file, item: item, legacyAllowed: true) else { continue } // damaged either way
             guard legacy else { continue }
             let key = ItemCipher.thumbnailKey(SymmetricKey(data: item.key), itemID: item.id)
             do {

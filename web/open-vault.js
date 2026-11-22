@@ -148,13 +148,15 @@
       // Each chunk of an item's content, in order: for saving large videos without holding them in memory.
       decrypt: (item, onChunk) => decryptFile(fileFor('items', item), item.id, item.key, onChunk),
       read: (item) => readAll(fileFor('items', item), item.id, item.key),
-      // A thumbnail has its own key; ones written before November 2026 used the item key.
+      // A thumbnail has its own key. Ones written before November 2026 used the item key, and
+      // are only accepted until the index says every thumbnail has its own (thumbnailKeys).
       async thumbnail(item) {
         if (!item.hasThumbnail) return null;
         const blob = fileFor('thumbs', item);
         try {
           return await readAll(blob, item.id, await hkdf(item.key, uuidBytes(item.id), 'ev/thumbnail'));
-        } catch {
+        } catch (error) {
+          if (index.thumbnailKeys === true) throw error;
           return readAll(blob, item.id, item.key);
         }
       },

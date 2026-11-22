@@ -44,4 +44,7 @@ struct VaultIndex: Codable, Sendable {
     /// before that shared the item key and nonces with the item; the vault re-encrypts them on
     /// first unlock, then sets this. New indexes start true; nil in ones written before.
     var thumbnailKeys: Bool? = true
+    /// On the main vault: the inbox's X25519 private key (`Inbox`), so pending entries open only
+    /// once this vault is unlocked. Nil until the app first asks for it (`Vault.inboxKey`).
+    var inboxKey: Data?
 }

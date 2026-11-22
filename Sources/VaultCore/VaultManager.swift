@@ -234,7 +234,7 @@ public final class VaultManager: Sendable {
             }
             let thumbURL = directory.appendingPathComponent("thumbs/\(item.id.uuidString).evf")
             if item.hasThumbnail, FileManager.default.fileExists(atPath: thumbURL.path) {
-                _ = try Vault.readThumbnail(Data(contentsOf: thumbURL), item: item)
+                _ = try Vault.readThumbnail(Data(contentsOf: thumbURL), item: item, legacyAllowed: index.thumbnailKeys != true)
             }
         }
     }

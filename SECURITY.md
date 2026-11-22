@@ -15,3 +15,14 @@ Fixed issues are listed below and in the commit history.
   did not expose the vault key, the passcode, or other items. Thumbnails now have their own key,
   and existing ones are re-encrypted on first unlock and re-uploaded on the next backup. See
   FORMAT.md, "Earlier thumbnails".
+- **November 2026: files saved while locked weren't protected by the vault passcode.** Photos
+  shared into the app while it was locked, and intruder photos, wait in an inbox until the next
+  unlock. The inbox's private key was kept in the app's Keychain (this device only, readable
+  while the phone is unlocked) rather than inside the vault, so someone who could read the
+  app's Keychain on an unlocked phone could open those waiting files without the vault passcode.
+  Everything already in the vault was unaffected. The key now lives in the main vault's encrypted
+  index and is moved there, and deleted from the Keychain, on the first unlock with Easy Vault
+  1.3. Vanish mode now also clears the inbox. See FORMAT.md, "Inbox".
+- **November 2026, hardening:** an exported vault no longer fails as a whole if one item's file
+  is missing on the device; and once a vault's thumbnails have all been re-encrypted, a thumbnail
+  under the old key is refused instead of accepted.

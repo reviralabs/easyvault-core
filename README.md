@@ -56,6 +56,13 @@ node web/test.mjs   # the browser opener, against the same sample vault
 Every released format has a vault folder in `Tests/VaultCoreTests/Fixtures` that the tests
 must keep opening, so a format change can't silently lock anyone out of their photos.
 
+## Saved while locked
+
+Photos shared into Easy Vault while it's locked, and intruder photos, wait in an inbox until the
+next unlock. The share extension only has the inbox's public key; the private key is sealed in the
+main vault's encrypted index, so those files open only once the vault is unlocked (FORMAT.md,
+"Inbox").
+
 ## What's not here
 
 The app itself (SwiftUI screens, the camera, the share extension and the iCloud upload) lives
@@ -73,9 +80,19 @@ What it doesn't:
 - **Someone with your unlocked vault.** Once it's open, it's open.
 - **Guessing on your own phone.** Argon2id makes each guess slow (about half a second), and the
   app adds waiting time after 5 wrong tries, but a short pattern can still be guessed by someone
-  with your phone and a lot of time. Use a longer pattern or a password.
+  with your phone and a lot of time. The waiting time is enforced by the app, so someone who can
+  run their own code on the phone skips it; the Secure Enclave and Argon2id still limit them to
+  guessing on that phone, one slow guess at a time. Use a longer pattern or a password.
 - **Sizes and counts.** File sizes and the number of items are visible to anyone with the files;
   names, dates, albums and content are not.
+- **That a second vault exists.** Nothing on disk says which vault is the main one, but someone
+  with a copy of the files can see there are two vault folders. The second vault is for someone
+  looking over your shoulder or making you open the app, not for hiding from a forensic copy.
+- **An old backup served as current.** Whoever controls the backup store (in practice, Apple)
+  can't read it, and any change to a file is caught by AES-GCM. But it could delete files, or
+  offer an older backup at restore time: nothing checks that a backup is the latest.
+- **A changed web page.** easyvault.app/open runs whatever the site serves. If you'd rather not
+  trust that, open `web/index.html` from a copy of this repository instead.
 - **Memory.** Keys are dropped when the vault locks, but Swift doesn't guarantee they're wiped
   from memory immediately.
 

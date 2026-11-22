@@ -342,6 +342,77 @@ final class VaultTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: second.path))
     }
 
+    /// A damaged vault still exports: an item whose file is gone is left out, everything else
+    /// gets out, and the copy still lists it so the opener can say it's missing.
+    func testExportSkipsMissingItemFiles() async throws {
+        let key = RecoveryKey.generate()
+        let vault = try manager().createVault(secret: .password("pw-damaged-vault"), recoveryKey: key)
+        let kept = try await vault.add(Data("kept".utf8), name: "kept.jpg", kind: .photo, contentType: "public.jpeg")
+        let lost = try await vault.add(Data("lost".utf8), name: "lost.jpg", kind: .photo, contentType: "public.jpeg", thumbnail: Data("t".utf8))
+        try FileManager.default.removeItem(at: vault.directory.appendingPathComponent("items/\(lost.id.uuidString).evf"))
+
+        let out = root.appendingPathComponent("export")
+        let missing = try await vault.exportEncrypted(to: out)
+        XCTAssertEqual(missing, 1)
+        let copy = try Vault.open(folder: out, recoveryKey: key)
+        let names = await copy.items.map(\.name)
+        XCTAssertEqual(Set(names), ["kept.jpg", "lost.jpg"])
+        let keptData = try await copy.data(for: kept.id)
+        XCTAssertEqual(keptData, Data("kept".utf8))
+        do { _ = try await copy.data(for: lost.id); XCTFail("a missing file opened") } catch {}
+    }
+
+    /// The inbox's private key is sealed inside the vault, not left on the device: pending
+    /// entries open only once the vault is unlocked, and only on the vault that holds the key.
+    func testInboxKeyLivesInTheVault() async throws {
+        let key = RecoveryKey.generate()
+        let vault = try manager().createVault(secret: .password("pw-inbox-vault"), recoveryKey: key)
+        let first = try await vault.inboxKey()
+        let again = try await vault.inboxKey()
+        XCTAssertEqual(first, again)
+
+        // Survives locking, and comes from the encrypted index.
+        await vault.lock()
+        let reopened = try manager().unlock(.password("pw-inbox-vault"))
+        let stored = try await reopened.inboxKey()
+        XCTAssertEqual(stored, first)
+        let onDisk = try Data(contentsOf: vault.directory.appendingPathComponent("index.evi"))
+        XCTAssertNil(onDisk.range(of: first), "never in the clear")
+
+        // A key kept elsewhere before (the app's Keychain) is adopted, so its entries still open.
+        let legacy = Inbox.makeKey()
+        let other = try manager().createVault(secret: .password("pw-inbox-other"))
+        let adopted = try await other.inboxKey(migrating: legacy.rawRepresentation)
+        XCTAssertEqual(adopted, legacy.rawRepresentation)
+        let kept = try await other.inboxKey(migrating: Inbox.makeKey().rawRepresentation)
+        XCTAssertEqual(kept, legacy.rawRepresentation, "an existing key is never replaced")
+
+        // Not in an export: it only matters on this device.
+        let out = root.appendingPathComponent("export")
+        try await reopened.exportEncrypted(to: out)
+        let rawVaultKey = await reopened.keyForTesting
+        let vaultKey = try XCTUnwrap(rawVaultKey)
+        XCTAssertNil(try Vault.readIndex(at: out, vaultID: reopened.id, key: SymmetricKey(data: vaultKey)).inboxKey)
+
+        let locked = try manager().createVault(secret: .password("pw-inbox-locked"))
+        await locked.lock()
+        do { _ = try await locked.inboxKey(); XCTFail("read while locked") } catch {
+            XCTAssertEqual(error as? VaultError, .locked)
+        }
+    }
+
+    /// Once every thumbnail has its own key, a thumbnail under the item key no longer opens.
+    func testOldThumbnailKeyRefusedAfterUpgrade() async throws {
+        let vault = try manager().createVault(secret: .password("pw-thumb-vault"))
+        let item = try await vault.add(Data("photo".utf8), name: "a.jpg", kind: .photo, contentType: "public.jpeg", thumbnail: Data("new".utf8))
+        let oldStyle = try ItemCipher.encrypt(Data("old".utf8), itemID: item.id, key: SymmetricKey(data: item.key))
+        XCTAssertEqual(try Vault.readThumbnail(oldStyle, item: item, legacyAllowed: true).data, Data("old".utf8))
+        XCTAssertThrowsError(try Vault.readThumbnail(oldStyle, item: item, legacyAllowed: false))
+
+        try oldStyle.write(to: vault.directory.appendingPathComponent("thumbs/\(item.id.uuidString).evf"))
+        do { _ = try await vault.thumbnail(for: item.id); XCTFail("old-style thumbnail opened") } catch {}
+    }
+
     func testRejectsInvalidSecretsBeforeDoingWork() {
         XCTAssertThrowsError(try manager().createVault(secret: .password("short"))) {
             guard case .invalidSecret = $0 as? VaultError else { return XCTFail("\($0)") }
