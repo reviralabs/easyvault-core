@@ -94,13 +94,15 @@ is JSON:
 { "version": 1,
   "items": [ { "id": "…", "name": "beach.jpg", "kind": "photo", "contentType": "public.jpeg",
                "byteCount": 123, "createdAt": "…", "addedAt": "…", "albumID": "…",
-               "hasThumbnail": true, "key": "<32-byte item key>" } ],
+               "hasThumbnail": true, "duration": 12.5, "favorite": true,
+               "key": "<32-byte item key>" } ],
   "albums": [ { "id": "…", "name": "Holiday", "createdAt": "…" } ],
   "isDuress": false, "decoyIsDuress": false, "thumbnailKeys": true,
   "inboxKey": "<32-byte X25519 private key>" }
 ```
 
-`kind` is `photo`, `video` or `file`. `thumbnailKeys` says every thumbnail uses its own key
+`kind` is `photo`, `video` or `file`. `duration` is a video's length in seconds, and
+`favorite` is written only when true (both added in app 1.4; older readers ignore them). `thumbnailKeys` says every thumbnail uses its own key
 (below). Whether a vault is a Vanish-mode (duress) vault is only
 in here, so it can't be seen without opening that vault. `inboxKey`, on the main vault only, is
 the private key of the inbox (below). Optional fields that are missing mean `false` / none, and

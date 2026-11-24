@@ -16,8 +16,32 @@ public struct VaultItem: Codable, Sendable, Identifiable, Equatable {
     public var addedAt: Date
     public var albumID: UUID?
     public var hasThumbnail: Bool
+    /// A video's length in seconds, if known. Added in 1.4; older items fill it in when played.
+    public var duration: Double?
     /// The item's own encryption key. Only ever stored inside the encrypted index.
     var key: Data
+    /// Stored only when true, so items that aren't favourites are written exactly as before.
+    private var favorite: Bool?
+
+    public var isFavorite: Bool {
+        get { favorite == true }
+        set { favorite = newValue ? true : nil }
+    }
+
+    init(id: UUID, name: String, kind: Kind, contentType: String, byteCount: Int64, createdAt: Date?,
+         addedAt: Date, albumID: UUID?, hasThumbnail: Bool, duration: Double? = nil, key: Data) {
+        self.id = id
+        self.name = name
+        self.kind = kind
+        self.contentType = contentType
+        self.byteCount = byteCount
+        self.createdAt = createdAt
+        self.addedAt = addedAt
+        self.albumID = albumID
+        self.hasThumbnail = hasThumbnail
+        self.duration = duration
+        self.key = key
+    }
 }
 
 public struct Album: Codable, Sendable, Identifiable, Equatable {

@@ -159,9 +159,10 @@ public actor Vault {
         contentType: String,
         createdAt: Date? = nil,
         albumID: UUID? = nil,
-        thumbnail: Data? = nil
+        thumbnail: Data? = nil,
+        duration: Double? = nil
     ) throws -> VaultItem {
-        try add(name: name, kind: kind, contentType: contentType, byteCount: Int64(data.count), createdAt: createdAt, albumID: albumID, thumbnail: thumbnail) { id, key, url in
+        try add(name: name, kind: kind, contentType: contentType, byteCount: Int64(data.count), createdAt: createdAt, albumID: albumID, thumbnail: thumbnail, duration: duration) { id, key, url in
             try Storage.write(ItemCipher.encrypt(data, itemID: id, key: key), to: url)
         }
     }
@@ -176,10 +177,11 @@ public actor Vault {
         contentType: String,
         createdAt: Date? = nil,
         albumID: UUID? = nil,
-        thumbnail: Data? = nil
+        thumbnail: Data? = nil,
+        duration: Double? = nil
     ) throws -> VaultItem {
         let size = try FileManager.default.attributesOfItem(atPath: source.path)[.size] as? NSNumber
-        return try add(name: name, kind: kind, contentType: contentType, byteCount: size?.int64Value ?? 0, createdAt: createdAt, albumID: albumID, thumbnail: thumbnail) { id, key, url in
+        return try add(name: name, kind: kind, contentType: contentType, byteCount: size?.int64Value ?? 0, createdAt: createdAt, albumID: albumID, thumbnail: thumbnail, duration: duration) { id, key, url in
             try ItemCipher.encryptFile(at: source, to: url, itemID: id, key: key)
         }
     }
@@ -192,6 +194,7 @@ public actor Vault {
         createdAt: Date?,
         albumID: UUID?,
         thumbnail: Data?,
+        duration: Double?,
         write: (UUID, SymmetricKey, URL) throws -> Void
     ) throws -> VaultItem {
         _ = try unlockedKey()
@@ -202,7 +205,8 @@ public actor Vault {
         let key = SymmetricKey(size: .bits256)
         let item = VaultItem(
             id: id, name: name, kind: kind, contentType: contentType, byteCount: byteCount,
-            createdAt: createdAt, addedAt: Date(), albumID: albumID, hasThumbnail: thumbnail != nil, key: key.data
+            createdAt: createdAt, addedAt: Date(), albumID: albumID, hasThumbnail: thumbnail != nil,
+            duration: duration, key: key.data
         )
         do {
             try write(id, key, itemURL(id))
@@ -247,6 +251,20 @@ public actor Vault {
             index.items[i].albumID = albumID
         }
         try saveIndex()
+    }
+
+    public func setFavorite(_ itemIDs: [UUID], _ isFavorite: Bool) throws {
+        _ = try unlockedKey()
+        for id in itemIDs {
+            guard let i = index.items.firstIndex(where: { $0.id == id }) else { throw VaultError.itemNotFound(id) }
+            index.items[i].isFavorite = isFavorite
+        }
+        try saveIndex()
+    }
+
+    /// For videos added before 1.4, once their length has been read.
+    public func setDuration(_ itemID: UUID, _ seconds: Double) throws {
+        try update(itemID) { $0.duration = seconds }
     }
 
     @discardableResult

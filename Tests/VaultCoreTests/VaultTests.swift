@@ -214,6 +214,37 @@ final class VaultTests: XCTestCase {
         XCTAssertThrowsError(try manager.unlock(vault.id, recoveryKey: recoveryKey))
     }
 
+    func testFavouritesAndVideoLengths() async throws {
+        let vault = try manager().createVault(secret: .password("pw-135791-vault"))
+        let photo = try await vault.add(Data("p".utf8), name: "p.jpg", kind: .photo, contentType: "public.jpeg")
+        let video = try await vault.add(Data("v".utf8), name: "v.mov", kind: .video, contentType: "com.apple.quicktime-movie", duration: 42.5)
+        let old = try await vault.add(Data("o".utf8), name: "o.mov", kind: .video, contentType: "com.apple.quicktime-movie")
+        XCTAssertFalse(photo.isFavorite)
+        XCTAssertNil(old.duration)
+
+        try await vault.setFavorite([photo.id, video.id], true)
+        try await vault.setFavorite([video.id], false)
+        try await vault.setDuration(old.id, 7)
+
+        let reopened = try manager().unlock(.password("pw-135791-vault"))
+        let items = await reopened.items
+        XCTAssertEqual(items.filter(\.isFavorite).map(\.id), [photo.id])
+        XCTAssertEqual(items.first { $0.id == video.id }?.duration, 42.5)
+        XCTAssertEqual(items.first { $0.id == old.id }?.duration, 7)
+    }
+
+    /// Items that aren't favourites and have no length are written exactly as before 1.4.
+    func testNewFieldsAreLeftOutWhenUnset() throws {
+        let item = VaultItem(id: UUID(), name: "a.jpg", kind: .photo, contentType: "public.jpeg", byteCount: 1,
+                             createdAt: nil, addedAt: Date(), albumID: nil, hasThumbnail: false, key: Data(count: 32))
+        let json = try String(decoding: JSONEncoder().encode(item), as: UTF8.self)
+        XCTAssertFalse(json.contains("favorite"))
+        XCTAssertFalse(json.contains("duration"))
+        var favourite = item
+        favourite.isFavorite = true
+        XCTAssertTrue(try String(decoding: JSONEncoder().encode(favourite), as: UTF8.self).contains("\"favorite\":true"))
+    }
+
     func testAlbumsAndOrganising() async throws {
         let vault = try manager().createVault(secret: .password("pw-123456-vault"))
         let album = try await vault.createAlbum(named: "Travel")
